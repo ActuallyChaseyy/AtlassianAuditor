@@ -19,6 +19,7 @@ def main():
         # "jira_spaces": 
     }
 
+    print("Generating report...")
     generator.generate_report(audit_data)
 
 if __name__ == "__main__":

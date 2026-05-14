@@ -51,9 +51,18 @@ REPORT_TEMPLATE = """
         .summary-left { display: flex; gap: 8px; align-items: baseline; }
         .summary-left span { color: var(--text-muted); font-weight: normal; font-size: 14px; }
         .summary-right { font-size: 12px; font-weight: normal; color: var(--text-muted);
-                         white-space: nowrap; padding-left: 16px;
+                         white-space: nowrap;
                          background: var(--surface-2); border: 1px solid var(--border);
                          border-radius: 12px; padding: 2px 10px; }
+
+        .members-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+        .members-table th { text-align: left; padding: 6px 12px; color: var(--text-muted);
+                            border-bottom: 1px solid var(--border); font-weight: 600; }
+        .members-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); }
+        .members-table tr:last-child td { border-bottom: none; }
+        .members-table tr:hover td { background: var(--surface-2); }
+        .member-count { font-size: 12px; color: var(--text-muted); font-weight: normal;
+                        margin-left: 8px; }
 
         .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
         .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
@@ -69,6 +78,14 @@ REPORT_TEMPLATE = """
         input[type=search]::placeholder { color: var(--text-muted); }
 
         .empty-state { color: var(--text-muted); font-style: italic; padding: 32px 0; }
+
+        .group-tabs { display: flex; gap: 0; margin-top: 12px; border-bottom: 1px solid var(--border); }
+        .group-tab { background: none; border: none; color: var(--text-muted); padding: 8px 12px;
+                     cursor: pointer; font-size: 13px; border-bottom: 2px solid transparent; transition: color 0.15s; }
+        .group-tab:hover { color: var(--text); }
+        .group-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .group-tab-panel { display: none; padding-top: 4px; }
+        .group-tab-panel.active { display: block; }
 
         /* Scrollbar styling for webkit browsers */
         ::-webkit-scrollbar { width: 8px; }
@@ -97,15 +114,15 @@ REPORT_TEMPLATE = """
                     <div class="label">Groups</div>
                 </div>
                 <div class="stat-card">
-                    <div class="number">&mdash;</div>
+                    <div class="number">N/A</div>
                     <div class="label">Users</div>
                 </div>
                 <div class="stat-card">
-                    <div class="number">&mdash;</div>
+                    <div class="number">N/A</div>
                     <div class="label">Confluence Spaces</div>
                 </div>
                 <div class="stat-card">
-                    <div class="number">&mdash;</div>
+                    <div class="number">N/A</div>
                     <div class="label">Jira Projects</div>
                 </div>
             </div>
@@ -120,9 +137,46 @@ REPORT_TEMPLATE = """
                         {{ group.name }}
                         <span style="color:#6B778C; font-weight:normal"> - {{ group.description or 'No description' }}</span>
                     </div>
-                    <div class="summary-right">{{ audit_data.tenant_map.get(group.directory, group.directory) }}</div>
+                    <div class="summary-right">{{ audit_data.tenant_map.get(group.directoryId, group.directoryId) }}</div>
                 </summary>
-                <p class="empty-state">Members not yet collected.</p>
+                <div class="group-tabs">
+                    <button class="group-tab active" data-target="users">Users ({{ group.users | length }})</button>
+                    <button class="group-tab" data-target="spaces">Spaces</button>
+                    <button class="group-tab" data-target="permissions">Permissions</button>
+                </div>
+
+                <div class="group-tab-panel active" data-panel="users">
+                    {% if group.users %}
+                    <table class="members-table">
+                        <thead>
+                            <tr>
+                                <th>Name <span class="member-count">({{ group.users | length }})</span></th>
+                                <th>Email</th>
+                                <th>Account Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in group.users %}
+                            <tr>
+                                <td>{{ user.name }}</td>
+                                <td>{{ user.email }}</td>
+                                <td>{{ user.status }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="empty-state">No members.</p>
+                    {% endif %}
+                </div>
+
+                <div class="group-tab-panel" data-panel="spaces">
+                    <p class="empty-state">Spaces data not yet collected.</p>
+                </div>
+
+                <div class="group-tab-panel" data-panel="permissions">
+                    <p class="empty-state">Permissions data not yet collected.</p>
+                </div>
             </details>
             {% else %}
             <p class="empty-state">No groups found.</p>
@@ -150,6 +204,19 @@ REPORT_TEMPLATE = """
                 document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
                 document.getElementById(btn.dataset.tab).classList.add('active');
                 btn.classList.add('active');
+            });
+        });
+
+        // Inner tabs per group card - scoped to the clicked card only
+        document.querySelectorAll('.group-tab').forEach(tab => {
+            tab.addEventListener('click', e => {
+                e.preventDefault();
+                const card = e.target.closest('details');
+                const target = e.target.dataset.target;
+                card.querySelectorAll('.group-tab').forEach(t => t.classList.remove('active'));
+                card.querySelectorAll('.group-tab-panel').forEach(p => p.classList.remove('active'));
+                e.target.classList.add('active');
+                card.querySelector(`.group-tab-panel[data-panel="${target}"]`).classList.add('active');
             });
         });
 
