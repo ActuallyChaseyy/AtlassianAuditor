@@ -1,7 +1,7 @@
 import dotenv 
 import os 
 
-from handlers import groups, tenants
+from handlers import groups, tenants, users
 from report import generator
 
 dotenv.load_dotenv()
@@ -13,8 +13,8 @@ def main():
     # data structure with returned values from atlassian to pass into report generator
     audit_data = {
         "tenant_map": tenant_map,
-        "groups": groups.get_groups(os.environ["ORG_ID"])
-        # "users": 
+        "groups": groups.get_groups(os.environ["ORG_ID"]),
+        "users": users.get_users(os.environ["ORG_ID"])
         # "permissions": 
         # "jira_spaces": 
     }

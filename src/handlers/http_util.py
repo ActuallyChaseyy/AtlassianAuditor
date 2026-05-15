@@ -25,3 +25,19 @@ def request_with_retry(context, method, url, **kwargs):
         time.sleep(wait)
 
     return response # Return the last response after exhausting retries
+
+# helper function to handle pagination of admin api 
+# uses cursor pagination instead of count based - per https://developer.atlassian.com/cloud/admin/organization/rest/intro/#Pagination
+def paginate_api(context, url, headers): 
+    cursor = None 
+    base_url = url.split("?")[0] 
+    initial_params = dict(param.split("=", 1) for param in url.split("?")[1].split("&")) if "?" in url else {}
+    while True: 
+        params = {"cursor": cursor} if cursor else initial_params
+        response = request_with_retry(context, "get", base_url, headers=headers, params=params)
+        data = response.json()
+        items = data.get("data", [])
+        yield from items
+        cursor = data.get("links", {}).get("next")
+        if not cursor:
+            break

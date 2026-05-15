@@ -102,7 +102,7 @@ REPORT_TEMPLATE = """
     <nav>
         <button data-tab="summary" class="active">Summary</button>
         <button data-tab="groups">Groups ({{ audit_data.groups | length }})</button>
-        <button data-tab="users">Users</button>
+        <button data-tab="users">Users ({{ audit_data.users | length }})</button>
         <button data-tab="permissions">Permissions</button>
         <button data-tab="jira-spaces">Jira Spaces</button>
     </nav>
@@ -114,7 +114,7 @@ REPORT_TEMPLATE = """
                     <div class="label">Groups</div>
                 </div>
                 <div class="stat-card">
-                    <div class="number">N/A</div>
+                    <div class="number">{{ audit_data.users | length }}</div>
                     <div class="label">Users</div>
                 </div>
                 <div class="stat-card">
@@ -184,7 +184,29 @@ REPORT_TEMPLATE = """
         </section>
 
         <section id="users" class="tab">
-            <p class="empty-state">No data collected yet.</p>
+            {% if audit_data.users %}
+            <input type="search" id="user-search" placeholder="Search users...">
+            <table class="members-table" id="users-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Account Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in audit_data.users %}
+                    <tr data-name="{{ user.name | lower }}" data-email="{{ user.email | lower }}">
+                        <td>{{ user.name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>{{ user.status }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty-state">No users found.</p>
+            {% endif %}
         </section>
 
         <section id="permissions" class="tab">
@@ -219,6 +241,17 @@ REPORT_TEMPLATE = """
                 card.querySelector(`.group-tab-panel[data-panel="${target}"]`).classList.add('active');
             });
         });
+
+        // User search - filters table rows by name or email
+        const userSearch = document.getElementById('user-search');
+        if (userSearch) {
+            userSearch.addEventListener('input', e => {
+                const q = e.target.value.toLowerCase();
+                document.querySelectorAll('#users-table tbody tr').forEach(row => {
+                    row.style.display = (row.dataset.name.includes(q) || row.dataset.email.includes(q)) ? '' : 'none';
+                });
+            });
+        }
 
         // Group search - filters cards by name
         const groupSearch = document.getElementById('group-search');
