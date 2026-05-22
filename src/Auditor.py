@@ -1,7 +1,7 @@
 import dotenv 
 import os 
 
-from handlers import groups, tenants, users
+from handlers import groups, tenants, users, jira_spaces
 from report import generator
 
 dotenv.load_dotenv()
@@ -14,9 +14,9 @@ def main():
     audit_data = {
         "tenant_map": tenant_map,
         "groups": groups.get_groups(os.environ["ORG_ID"]),
-        "users": users.get_users(os.environ["ORG_ID"])
-        # "permissions": 
-        # "jira_spaces": 
+        "users": users.get_users(os.environ["ORG_ID"]),
+        # "permissions":
+        "jira_spaces": [space for name in tenant_map.values() for space in jira_spaces.get_jira_spaces(name)]
     }
 
     print("Generating report...")

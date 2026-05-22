@@ -1,7 +1,7 @@
 import dotenv
 import os
 import time
-from handlers.http_util import paginate_api
+from handlers.http_util import paginate_admin_api
 
 dotenv.load_dotenv()
 base_url = "https://api.atlassian.com/admin/v2"
@@ -17,5 +17,5 @@ def get_users(org_id):
             "email": user["email"],
             "status": user["accountStatus"],
         }
-        for user in paginate_api("Users", url, headers)
+        for user in paginate_admin_api("Users", url, headers)
     ]

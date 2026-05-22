@@ -1,7 +1,7 @@
 import dotenv
 import os
 import time
-from handlers.http_util import request_with_retry, paginate_api
+from handlers.http_util import request_with_retry, paginate_admin_api
 
 dotenv.load_dotenv()
 base_url = "https://api.atlassian.com/admin/v2"
@@ -17,7 +17,7 @@ def get_group_members(org_id, group_id, headers):
             "email": member["email"],
             "status": member["accountStatus"],
         }
-        for member in paginate_api("Group Members", url, headers=headers)
+        for member in paginate_admin_api("Group Members", url, headers=headers)
     ]
 
 def get_groups(org_id):
@@ -25,7 +25,7 @@ def get_groups(org_id):
     url = f"{base_url}/orgs/{org_id}/directories/-/groups"
     headers = {"Authorization": f"Bearer {os.environ['ADMIN_API_KEY']}"} 
     groups = [] 
-    for group in paginate_api("Groups", url, headers):
+    for group in paginate_admin_api("Groups", url, headers):
         groups.append({
             "id": group["id"],
             "name": group["name"],

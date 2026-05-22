@@ -1,6 +1,6 @@
 import dotenv
 import os
-from handlers.http_util import paginate_api
+from handlers.http_util import paginate_admin_api
 
 dotenv.load_dotenv()
 
@@ -14,5 +14,5 @@ def get_tenants(org_id):
             "directoryId": tenant["directoryId"],
             "name": tenant["name"]
         }
-        for tenant in paginate_api("Tenants", url, headers)
+        for tenant in paginate_admin_api("Tenants", url, headers)
     ]
