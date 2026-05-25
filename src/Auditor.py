@@ -8,10 +8,14 @@ from report.checks import run_checks
 
 dotenv.load_dotenv()
 
-# When TRUE, the script will load data from local audit_data.json file instead of API calls. 
-# Must be ran in live mode at least once to generate the cache. Useful for development and testing. 
-DEBUG_MODE = False
+# When TRUE, the script will load data from local audit_data.json file instead of API calls.
+# Must be ran in live mode at least once to generate the cache. Useful for development and testing.
+DEBUG_MODE = True
 CACHE_FILE = "audit_data.json"
+
+# Tenant subdomains to include in the audit (e.g. ["example"] for example.atlassian.net).
+# Leave empty to scan all tenants.
+SCAN_TENANTS = []
 
 def main():
     if DEBUG_MODE:
@@ -20,13 +24,20 @@ def main():
             audit_data = json.load(f)
     else:
         tenant_list = tenants.get_tenants(os.environ["ORG_ID"])
+        if SCAN_TENANTS:
+            scan_lower = {t.lower() for t in SCAN_TENANTS}
+            tenant_list = [t for t in tenant_list if t["name"].lower() in scan_lower]
+            print(f"Filtering to tenants: {[t['name'] for t in tenant_list]}")
+
         # lookup list to convert directoryId to tenant name when rendering report
         tenant_map = {t["directoryId"]: t["name"] for t in tenant_list}
+
+        all_groups = groups.get_groups(os.environ["ORG_ID"])
 
         # data structure with returned atlassian data to be used with report generation, checks and cache.
         audit_data = {
             "tenant_map": tenant_map,
-            "groups": groups.get_groups(os.environ["ORG_ID"]),
+            "groups": [g for g in all_groups if g["directoryId"] in tenant_map],
             "users": users.get_users(os.environ["ORG_ID"]),
             # "permissions":
             "jira_spaces": [space for name in tenant_map.values() for space in jira_spaces.get_jira_spaces(name)]

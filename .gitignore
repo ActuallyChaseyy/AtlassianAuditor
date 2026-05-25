@@ -218,7 +218,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Generated report output
-report.html
+*report.html
 
 # Cached audit data
-audit_data.json
+*audit_data.json
