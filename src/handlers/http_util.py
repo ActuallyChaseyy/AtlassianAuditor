@@ -3,10 +3,12 @@ import time
 
 # Maximum number of retries for failed requests
 max_retries = 10
+# Default timeout period in seconds for all requests
+default_timeout = 30 
 retryable_statuses = {500, 502, 503, 504}  # Server errors that should be retried
 
 def request_with_retry(context, method, url, **kwargs): 
-    kwargs.setdefault("timeout", 30) # default timeout of 30 seconds for all requests
+    kwargs.setdefault("timeout", default_timeout)
     for attempt in range(max_retries):
         try: 
             response = requests.request(method, url, **kwargs)
