@@ -2,10 +2,11 @@ import requests
 import time 
 
 # Maximum number of retries for failed requests
-max_retries = 5 
+max_retries = 10
 retryable_statuses = {500, 502, 503, 504}  # Server errors that should be retried
 
 def request_with_retry(context, method, url, **kwargs): 
+    kwargs.setdefault("timeout", 30) # default timeout of 30 seconds for all requests
     for attempt in range(max_retries):
         try: 
             response = requests.request(method, url, **kwargs)
@@ -48,6 +49,9 @@ def paginate_jira_api(context, url, headers):
     max_results = 50
     while True:
         response = request_with_retry(context, "get", url, headers=headers, params={"startAt": start, "maxResults": max_results})
+        if not response.ok: 
+            print(f"Failed to fetch {context}: {response.status_code} - {response.text}")
+            break
         data = response.json()
         items = data.get("values", [])
         yield from items

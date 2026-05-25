@@ -3,6 +3,7 @@ import os
 
 from handlers import groups, tenants, users, jira_spaces
 from report import generator
+from report.checks import run_checks
 
 dotenv.load_dotenv()
 def main():
@@ -19,6 +20,7 @@ def main():
         "jira_spaces": [space for name in tenant_map.values() for space in jira_spaces.get_jira_spaces(name)]
     }
 
+    audit_data["suggestions"] = run_checks(audit_data)
     print("Generating report...")
     generator.generate_report(audit_data)
 

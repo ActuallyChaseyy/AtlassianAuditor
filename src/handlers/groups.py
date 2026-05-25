@@ -8,7 +8,7 @@ base_url = "https://api.atlassian.com/admin/v2"
 
 def get_group_members(org_id, group_id, headers):
     time.sleep(0.5) # small delay to help avoid rate limits
-    print(f"Fetching members for group {group_id}...")
+    # print(f"Fetching members for group {group_id}...")
     url = f"{base_url}/orgs/{org_id}/directories/-/users?groupIds={group_id}"
     return [
         {
