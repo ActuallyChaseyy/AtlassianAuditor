@@ -1,1 +1,187 @@
 # AtlassianAuditor
+
+A Python tool that audits Atlassian organisation access and generates an HTML report with actionable security findings across Groups, Users, and Jira projects.
+
+## What it does
+
+AtlassianAuditor connects to the Atlassian Admin API and Jira REST API to collect data about your organisation, then runs a series of checks and produces a self-contained HTML report. Findings are categorised by severity (warning / info) and grouped by area (Groups, Users, Jira).
+
+**Checks run:**
+
+| Category | Check |
+|----------|-------|
+| Groups | Empty groups |
+| Groups | Groups where all members are inactive |
+| Groups | Groups not assigned to any Jira project |
+| Groups | Groups with no description |
+| Groups | Groups with >50 members assigned to a Jira project |
+| Groups | Identical group names across multiple tenants |
+| Users | Inactive users still assigned to groups |
+| Users | Managed users not in any group |
+| Users | Duplicate managed accounts sharing an email address |
+| Users | Users with admin roles across 3+ Jira projects |
+| Users | Managed users with direct (non-group) Jira project access |
+| Jira | Projects with multiple directly-assigned users |
+| Jira | Projects with an empty group assigned |
+| Jira | Projects with no lead assigned |
+| Jira | Projects with no group-based access |
+
+## Output
+
+Running the tool produces a self-contained `report.html` file. 
+
+The report has five tabs:
+
+| Tab | Contents |
+|-----|----------|
+| **Summary** | At-a-glance counts for groups, users, and Jira projects, followed by all check findings grouped by severity (warnings first, then info). Each finding is expandable and lists every affected entity with supporting detail. |
+| **Groups** | Searchable list of all groups. Expand any group to see its members (name, email, account status) and the Jira projects it has access to with the assigned roles. |
+| **Users** | Searchable table of all managed users (name, email, account status). Only managed (internal) accounts are included - external and guest accounts are out of scope. |
+| **Permissions** | Reserved for a future permissions audit. Currently shows a placeholder. |
+| **Jira Spaces** | Searchable list of all Jira projects across all tenants. Expand any project to see which users have direct access and which groups are assigned, including each group's members and permission roles. |
+
+## Prerequisites
+
+- Python 3.10+
+- An Atlassian organisation with Admin API access
+- An Atlassian Admin API key (org-level)
+- An Atlassian account with API token access to each Jira tenant
+
+## Setup
+
+1. Clone the repository and install dependencies:
+
+```bash
+pip install python-dotenv requests
+```
+
+2. Copy the example environment file and fill in your credentials:
+
+```bash
+cp src/.env.example src/.env
+```
+
+```ini
+# src/.env
+ADMIN_API_KEY=        # Atlassian org-level admin API key
+ORG_ID=               # Your Atlassian organisation ID
+ATLASSIAN_USERNAME=   # Email address of the Atlassian account used for Jira API calls
+ATLASSIAN_API_TOKEN=  # Atlassian API token for the above account
+```
+
+- **ADMIN_API_KEY** - generate at [admin.atlassian.com](https://admin.atlassian.com) → Settings → API keys
+- **ORG_ID** - found in the URL of your admin portal: `admin.atlassian.com/o/<ORG_ID>/...`
+- **ATLASSIAN_API_TOKEN** - generate at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+
+## Usage
+
+```bash
+cd src
+python Auditor.py
+```
+
+The script will:
+1. Fetch all tenants, groups (with members), managed users, and Jira projects (with role assignments) from the API
+2. Cache the raw data to `audit_data.json`
+3. Run all checks against the collected data
+4. Write `report.html` to the project root
+
+Open `report.html` in any browser to view the report.
+
+## Debug mode
+
+After the first run, you can set `DEBUG_MODE = True` in `Auditor.py` to load data from the cached `audit_data.json` file instead of hitting the API. This speeds up development and testing significantly.
+
+```python
+# src/Auditor.py
+DEBUG_MODE = True   # loads from audit_data.json
+```
+
+## Adding new checks
+
+All checks live in `src/report/checks.py` and follow the same three-step pattern.
+
+### 1. Write the check function
+
+Create a private function named `_check_<something>`. It receives whatever slices of `audit_data` it needs, builds a list of `items` (one dict per offending entity), then delegates to `_finding()`.
+
+```python
+def _check_example(groups, tenant_map):
+    items = [
+        {"label": g["name"], "tenant": _tenant_name(g, tenant_map)}
+        for g in groups
+        if <your condition here>
+    ]
+    return _finding(
+        "example",           # unique snake_case id - used as an HTML anchor
+        "warning",           # "warning" or "info"
+        "Groups",            # category shown in the report: "Groups", "Users", or "Jira"
+        "groups that ...",   # short title; the report prepends the item count automatically
+        "Explanation of why this matters and what to do about it.",
+        items,
+    )
+```
+
+`_finding()` returns `None` when `items` is empty, so the check disappears from the report automatically when there's nothing to flag - no extra guard needed.
+
+**Item dict keys:**
+
+Each dict in `items` must have at least a `"label"` key (the primary display value). Add any extra keys that give useful context in the report - look at existing checks for examples:
+
+| Key | Used for |
+|-----|----------|
+| `label` | Primary display name (required) |
+| `tenant` | Which Atlassian directory the entity belongs to |
+| `email` | User email address |
+| `groups` | Comma-separated group names |
+| `projects` | Comma-separated project names |
+| `count` | Numeric count shown alongside the label |
+| `key` | Jira project key |
+
+### 2. Register the check in `run_checks()`
+
+Add a call to your function inside the `raw` list in `run_checks()`. Place it under the appropriate severity block (warnings first, then info):
+
+```python
+def run_checks(audit_data) -> list[dict]:
+    groups      = audit_data.get("groups", [])
+    users       = audit_data.get("users", [])
+    jira_spaces = audit_data.get("jira_spaces", [])
+    tenant_map  = audit_data.get("tenant_map", {})
+
+    raw = [
+        # Warnings
+        ...
+        _check_example(groups, tenant_map),   # <-- add here
+        # Info
+        ...
+    ]
+    return [c for c in raw if c is not None]
+```
+
+### 3. Test with debug mode
+
+Enable `DEBUG_MODE = True` in `Auditor.py` to iterate against the cached `audit_data.json` without hitting the API on every run.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Project structure
+
+```
+src/
+├── Auditor.py              # Entry point
+├── .env.example            # Environment variable template
+├── handlers/
+│   ├── http_util.py        # HTTP helpers and pagination
+│   ├── tenants.py          # Fetch org tenants (directories)
+│   ├── groups.py           # Fetch groups and their members
+│   ├── users.py            # Fetch managed users
+│   └── jira_spaces.py      # Fetch Jira projects and role assignments
+└── report/
+    ├── checks.py           # All audit checks
+    └── generator.py        # HTML report generation
+```
