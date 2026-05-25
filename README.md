@@ -88,7 +88,9 @@ The script will:
 
 Open `report.html` in any browser to view the report.
 
-## Debug mode
+## Internals 
+
+### Debug mode
 
 After the first run, you can set `DEBUG_MODE = True` in `Auditor.py` to load data from the cached `audit_data.json` file instead of hitting the API. This speeds up development and testing significantly.
 
@@ -97,11 +99,11 @@ After the first run, you can set `DEBUG_MODE = True` in `Auditor.py` to load dat
 DEBUG_MODE = True   # loads from audit_data.json
 ```
 
-## Adding new checks
+### Adding new checks
 
 All checks live in `src/report/checks.py` and follow the same three-step pattern.
 
-### 1. Write the check function
+#### 1. Write the check function
 
 Create a private function named `_check_<something>`. It receives whatever slices of `audit_data` it needs, builds a list of `items` (one dict per offending entity), then delegates to `_finding()`.
 
@@ -138,7 +140,7 @@ Each dict in `items` must have at least a `"label"` key (the primary display val
 | `count` | Numeric count shown alongside the label |
 | `key` | Jira project key |
 
-### 2. Register the check in `run_checks()`
+#### 2. Register the check in `run_checks()`
 
 Add a call to your function inside the `raw` list in `run_checks()`. Place it under the appropriate severity block (warnings first, then info):
 
@@ -159,9 +161,27 @@ def run_checks(audit_data) -> list[dict]:
     return [c for c in raw if c is not None]
 ```
 
-### 3. Test with debug mode
+#### 3. Test with debug mode
 
 Enable `DEBUG_MODE = True` in `Auditor.py` to iterate against the cached `audit_data.json` without hitting the API on every run.
+
+### HTTP Behaviour 
+
+All HTTP requests go through `http_util.py`, which handles retries, rate limiting and pagination consistently across the Admin and Jira API. 
+
+**Retries and rate limiting**
+The tool will retry a request up to 10 times before giving up and returning the last response. This can be configured with the `max_retries` variable at the top of `http_util.py`. Two categories of failure will trigger a retry: 
+- **Network errors** including timeouts, connection refused etc. Retried with a 5 second delay between attempts 
+- **HTTP error codes** 429, 500, 502, 503, 504
+
+For `429 Rate limited` responses, the tool respects the `Retry-After` header if present. For all other retryable responses, it defaults to a 5 second wait. 
+
+> **Large organisations:** The retry logic handles transient rate limiting automatically, but orgs with a high volume of groups, users or projects may exhaust retries during sustained throttling. If you see repeated `429` failures across many requests, consider running the tool during off-peak hours or reducing concurrent usage of the same API credentials - ideally the script should have a dedicated set of API keys. Also consider increasing the `max_retries` variable, or `default_timeout` variable to give more leniency between request attempts.
+
+**Pagination**
+Atlassian Admin API uses cursor-based pagination. The tool passes a `cursor` parameter on each request and follows the `links.next` value in the response until it is absent. 
+
+Jira API uses offset-based pagination with a page size of 50. The tool increments `startAt` by the number of items returned per page and stops when the response includes `isLast: true` or returns an empty page. Failed Jira pages (non-`2xx` responses) are logged and terminate the current pagination sequence. 
 
 ---
 
