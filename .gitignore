@@ -219,3 +219,6 @@ __marimo__/
 
 # Generated report output
 report.html
+
+# Cached audit data
+audit_data.json

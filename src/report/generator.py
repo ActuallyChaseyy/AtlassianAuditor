@@ -259,14 +259,30 @@ REPORT_TEMPLATE = """\
                        <th>Email</th><th>Account Status</th>
                    </tr></thead><tbody>${{rows}}</tbody></table>`
                 : '<p class="empty-state">No members.</p>';
+
+            const assignedSpaces = (DATA.jira_spaces || []).filter(s =>
+                (s.groups_with_access || []).some(g => g.name === group.name)
+            );
+            const spaceRows = assignedSpaces.map(s => {{
+                const ga = s.groups_with_access.find(g => g.name === group.name);
+                const roles = (ga.roles || []).join(', ') || '—';
+                return `<tr><td>${{esc(s.name)}}</td><td>${{esc(s.key)}}</td><td>${{esc(roles)}}</td></tr>`;
+            }}).join('');
+            const spacesTable = spaceRows
+                ? `<table class="members-table"><thead><tr>
+                       <th>Project <span class="member-count">(${{assignedSpaces.length}})</span></th>
+                       <th>Key</th><th>Roles</th>
+                   </tr></thead><tbody>${{spaceRows}}</tbody></table>`
+                : '<p class="empty-state">Not assigned to any Jira project.</p>';
+
             det.insertAdjacentHTML('beforeend', `
                 <div class="group-tabs">
                     <button class="group-tab active" data-target="users">Users (${{users.length}})</button>
-                    <button class="group-tab" data-target="spaces">Spaces</button>
+                    <button class="group-tab" data-target="spaces">Spaces (${{assignedSpaces.length}})</button>
                     <button class="group-tab" data-target="permissions">Permissions</button>
                 </div>
                 <div class="group-tab-panel active" data-panel="users">${{usersTable}}</div>
-                <div class="group-tab-panel" data-panel="spaces"><p class="empty-state">Spaces data not yet collected.</p></div>
+                <div class="group-tab-panel" data-panel="spaces">${{spacesTable}}</div>
                 <div class="group-tab-panel" data-panel="permissions"><p class="empty-state">Permissions data not yet collected.</p></div>`);
             det.querySelectorAll('.group-tab').forEach(tab =>
                 tab.addEventListener('click', e => {{

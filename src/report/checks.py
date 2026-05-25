@@ -31,6 +31,12 @@ def run_checks(audit_data) -> list[dict]:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+_ADDON_ROLE = "atlassian-addons-project-access"
+
+def _human_users(users_with_access):
+    return [u for u in users_with_access if _ADDON_ROLE not in u.get("roles", [])]
+
+
 def _finding(id_, severity, category, title, detail, items):
     if not items:
         return None
@@ -201,7 +207,7 @@ def _check_over_privileged_users(jira_spaces, users):
     # {accountId: {displayName, projects: list}}
     admin_projects = defaultdict(lambda: {"name": "", "projects": []})
     for s in jira_spaces:
-        for u in s.get("users_with_access", []):
+        for u in _human_users(s.get("users_with_access", [])):
             if u["accountId"] not in managed_ids:
                 continue
             if any("admin" in r.lower() for r in u.get("roles", [])):
@@ -224,7 +230,7 @@ def _check_users_direct_jira_access(jira_spaces, users):
     # {accountId: {displayName, projects: list}}
     direct_access = defaultdict(lambda: {"name": "", "projects": []})
     for s in jira_spaces:
-        for u in s.get("users_with_access", []):
+        for u in _human_users(s.get("users_with_access", [])):
             if u["accountId"] in managed_ids:
                 direct_access[u["accountId"]]["name"] = u["displayName"]
                 direct_access[u["accountId"]]["projects"].append(s["name"])
@@ -244,8 +250,8 @@ def _check_users_direct_jira_access(jira_spaces, users):
 
 def _check_jira_projects_direct_user_assignments(jira_spaces):
     items = [
-        {"label": s["name"], "key": s["key"], "direct_users": len(s.get("users_with_access", []))}
-        for s in jira_spaces if len(s.get("users_with_access", [])) >= 2
+        {"label": s["name"], "key": s["key"], "direct_users": len(_human_users(s.get("users_with_access", [])))}
+        for s in jira_spaces if len(_human_users(s.get("users_with_access", []))) >= 2
     ]
     return _finding(
         "jira_projects_direct_user_assignments", "warning", "Jira",
