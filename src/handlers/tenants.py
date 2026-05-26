@@ -4,7 +4,6 @@ from handlers.http_util import paginate_admin_api
 
 dotenv.load_dotenv()
 
-
 def get_tenants(org_id):
     print("Fetching all tenants for org...")
     url = f"https://api.atlassian.com/admin/v2/orgs/{org_id}/directories"

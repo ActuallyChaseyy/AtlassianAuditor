@@ -43,7 +43,6 @@ def _get_project_roles(tenant, project_key):
 
     return list(users_map.values()), list(groups_map.values())
 
-
 def get_jira_spaces(tenant):
     print(f"Fetching Jira spaces for tenant {tenant}...")
     url = f"https://{tenant}.atlassian.net/rest/api/2/project/search"
@@ -61,6 +60,3 @@ def get_jira_spaces(tenant):
             "groups_with_access": groups_with_access,
         })
     return spaces
-
-
-

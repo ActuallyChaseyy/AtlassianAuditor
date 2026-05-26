@@ -347,8 +347,94 @@ REPORT_TEMPLATE = """\
     }}
 
     // ── Permissions ────────────────────────────────────────────────────────────
+    function formatHolder(h) {{
+        if (h.type === 'group')           return 'Group: ' + esc(h.name || '');
+        if (h.type === 'projectRole')     return 'Role: '  + esc(h.name || '');
+        if (h.type === 'applicationRole') return 'App: '   + esc(h.name || '');
+        if (h.type === 'anyone')          return 'Anyone (public)';
+        if (h.type === 'user') {{
+            const u = (DATA.users || []).find(u => u.accountId === h.accountId);
+            return 'User: ' + esc(u ? u.name : h.accountId || '');
+        }}
+        return esc(h.type + (h.name ? ': ' + h.name : ''));
+    }}
+
+    function formatPermissionName(key) {{
+        return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }}
+
+    function buildSchemeCard(scheme) {{
+        const det = document.createElement('details');
+        det.className = 'scheme-card';
+        det.dataset.name = (scheme.name || '').toLowerCase();
+        det.innerHTML = `
+            <summary>
+                <div class="summary-left">${{esc(scheme.name)}}
+                    <span style="color:#6B778C;font-weight:normal"> - ${{esc(scheme.description || 'No description')}}</span>
+                </div>
+                <div class="summary-right">${{esc(scheme.tenant)}} · ${{scheme.project_count}} project${{scheme.project_count !== 1 ? 's' : ''}}</div>
+            </summary>`;
+
+        let innerDone = false;
+        det.addEventListener('toggle', () => {{
+            if (!det.open || innerDone) return;
+            innerDone = true;
+
+            const projectRows = (scheme.projects || []).map(p =>
+                `<tr><td>${{esc(p.key)}}</td><td>${{esc(p.name)}}</td></tr>`
+            ).join('');
+            const projectsHtml = projectRows
+                ? `<table class="members-table"><thead><tr><th>Key</th><th>Project</th></tr></thead><tbody>${{projectRows}}</tbody></table>`
+                : '<p class="empty-state">No projects use this scheme.</p>';
+
+            const permRows = (scheme.permissions || []).map(entry => {{
+                const grantedTo = (entry.holders || []).map(formatHolder).join('<br>');
+                return `<tr><td style="white-space:nowrap">${{esc(formatPermissionName(entry.permission))}}</td><td>${{grantedTo}}</td></tr>`;
+            }}).join('');
+            const permsHtml = permRows
+                ? `<table class="members-table"><thead><tr><th>Permission</th><th>Granted To</th></tr></thead><tbody>${{permRows}}</tbody></table>`
+                : '<p class="empty-state">No permission entries.</p>';
+
+            det.insertAdjacentHTML('beforeend', `
+                <div class="space-tabs">
+                    <button class="space-tab active" data-target="perms">Permissions (${{(scheme.permissions || []).length}})</button>
+                    <button class="space-tab" data-target="projects">Projects (${{scheme.project_count}})</button>
+                </div>
+                <div class="space-tab-panel active" data-panel="perms">${{permsHtml}}</div>
+                <div class="space-tab-panel" data-panel="projects">${{projectsHtml}}</div>`);
+
+            det.querySelectorAll('.space-tab').forEach(tab =>
+                tab.addEventListener('click', e => {{
+                    e.preventDefault();
+                    const target = e.target.dataset.target;
+                    det.querySelectorAll('.space-tab').forEach(t => t.classList.remove('active'));
+                    det.querySelectorAll('.space-tab-panel').forEach(p => p.classList.remove('active'));
+                    e.target.classList.add('active');
+                    det.querySelector(`.space-tab-panel[data-panel="${{target}}"]`).classList.add('active');
+                }})
+            );
+        }});
+        return det;
+    }}
+
+    let schemeCards = [];
+
     function renderPermissions() {{
-        document.getElementById('permissions').innerHTML = '<p class="empty-state">No data collected yet.</p>';
+        const sec = document.getElementById('permissions');
+        const schemes = DATA.permission_schemes || [];
+        if (!schemes.length) {{
+            sec.innerHTML = '<p class="empty-state">No permission schemes found.</p>';
+            return;
+        }}
+        sec.innerHTML = `<input type="search" id="scheme-search" placeholder="Search permission schemes..."><div id="scheme-list"></div>`;
+        const list = document.getElementById('scheme-list');
+        schemeCards = schemes.map(buildSchemeCard);
+        schemeCards.forEach(c => list.appendChild(c));
+        document.querySelector('[data-tab="permissions"]').textContent = `Permissions (${{schemes.length}})`;
+        document.getElementById('scheme-search').addEventListener('input', e => {{
+            const q = e.target.value.toLowerCase();
+            schemeCards.forEach(c => {{ c.style.display = c.dataset.name.includes(q) ? '' : 'none'; }});
+        }});
     }}
 
     // ── Jira Spaces ────────────────────────────────────────────────────────────

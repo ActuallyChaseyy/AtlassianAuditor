@@ -2,7 +2,7 @@ import dotenv
 import os
 import json
 
-from handlers import groups, tenants, users, jira_spaces
+from handlers import groups, tenants, users, jira_spaces, permission_schemes
 from report import generator
 from report.checks import run_checks
 
@@ -10,7 +10,7 @@ dotenv.load_dotenv()
 
 # When TRUE, the script will load data from local audit_data.json file instead of API calls.
 # Must be ran in live mode at least once to generate the cache. Useful for development and testing.
-DEBUG_MODE = True
+DEBUG_MODE = False
 CACHE_FILE = "audit_data.json"
 
 # Tenant subdomains to include in the audit (e.g. ["example"] for example.atlassian.net).
@@ -39,7 +39,7 @@ def main():
             "tenant_map": tenant_map,
             "groups": [g for g in all_groups if g["directoryId"] in tenant_map],
             "users": users.get_users(os.environ["ORG_ID"]),
-            # "permissions":
+            "permission_schemes": [s for name in tenant_map.values() for s in permission_schemes.get_permission_schemes(name)],
             "jira_spaces": [space for name in tenant_map.values() for space in jira_spaces.get_jira_spaces(name)]
         }
 
