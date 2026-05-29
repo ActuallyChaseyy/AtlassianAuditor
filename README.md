@@ -8,13 +8,16 @@ AtlassianAuditor connects to the Atlassian Admin API and Jira REST API to collec
 
 **Checks run:**
 
+Checks are split across two files. Plug-and-play checks work out of the box and can be toggled on or off. Configured checks require org-specific values to be set before they are meaningful.
+
+*Plug-and-play (`checks.py`)*
+
 | Category | Check |
 |----------|-------|
 | Groups | Empty groups |
 | Groups | Groups where all members are inactive |
 | Groups | Groups not assigned to any Jira project |
 | Groups | Groups with no description |
-| Groups | Groups with >50 members assigned to a Jira project |
 | Groups | Identical group names across multiple tenants |
 | Users | Inactive users still assigned to groups |
 | Users | Managed users not in any group |
@@ -25,6 +28,13 @@ AtlassianAuditor connects to the Atlassian Admin API and Jira REST API to collec
 | Jira | Projects with an empty group assigned |
 | Jira | Projects with no lead assigned |
 | Jira | Projects with no group-based access |
+
+*Configured (`checks_configured.py`)*
+
+| Category | Check | Config |
+|----------|-------|--------|
+| Groups | Groups above a member threshold assigned to a Jira project | `LARGE_GROUPS_ON_JIRA_THRESHOLD` (default: 50) |
+| Jira | Jira projects missing a required group | `REQUIRED_GROUP_NAME` |
 
 ## Output
 
@@ -124,7 +134,12 @@ python Auditor.py --debug
 
 ### Adding new checks
 
-All checks live in `src/report/checks.py` and follow the same three-step pattern.
+Checks are split into two files depending on whether they need configuration:
+
+- **`checks.py`** — plug-and-play checks. Each has a `CHECK_<NAME> = True/False` toggle at the top of the file. No other setup needed.
+- **`checks_configured.py`** — checks that require org-specific values (a group name, a threshold, etc.). Each check has its own config variables defined above it in the file.
+
+Both files follow the same three-step pattern.
 
 #### 1. Write the check function
 
@@ -165,23 +180,31 @@ Each dict in `items` must have at least a `"label"` key (the primary display val
 
 #### 2. Register the check in `run_checks()`
 
-Add a call to your function inside the `raw` list in `run_checks()`. Place it under the appropriate severity block (warnings first, then info):
+**Plug-and-play (`checks.py`):** add a toggle flag at the top of the file, then add the conditional call to `run_checks()`:
 
 ```python
-def run_checks(audit_data) -> list[dict]:
-    groups      = audit_data.get("groups", [])
-    users       = audit_data.get("users", [])
-    jira_spaces = audit_data.get("jira_spaces", [])
-    tenant_map  = audit_data.get("tenant_map", {})
+CHECK_EXAMPLE = True
 
+def run_checks(audit_data) -> list[dict]:
+    ...
     raw = [
-        # Warnings
         ...
-        _check_example(groups, tenant_map),   # <-- add here
-        # Info
-        ...
+        _check_example(groups, tenant_map) if CHECK_EXAMPLE else None,
     ]
-    return [c for c in raw if c is not None]
+```
+
+**Configured (`checks_configured.py`):** add config variables above the function, add an `ENABLED` flag, then register it in `run_checks()` the same way:
+
+```python
+EXAMPLE_ENABLED   = False
+EXAMPLE_THRESHOLD = 10
+
+def run_checks(audit_data) -> list[dict]:
+    ...
+    raw = [
+        ...
+        _check_example(groups) if EXAMPLE_ENABLED else None,
+    ]
 ```
 
 #### 3. Test with debug mode
@@ -216,15 +239,16 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```
 src/
-├── Auditor.py              # Entry point
-├── .env.example            # Environment variable template
+├── Auditor.py                  # Entry point
+├── .env.example                # Environment variable template
 ├── handlers/
-│   ├── http_util.py        # HTTP helpers and pagination
-│   ├── tenants.py          # Fetch org tenants (directories)
-│   ├── groups.py           # Fetch groups and their members
-│   ├── users.py            # Fetch managed users
-│   └── jira_spaces.py      # Fetch Jira projects and role assignments
+│   ├── http_util.py            # HTTP helpers and pagination
+│   ├── tenants.py              # Fetch org tenants (directories)
+│   ├── groups.py               # Fetch groups and their members
+│   ├── users.py                # Fetch managed users
+│   └── jira_spaces.py          # Fetch Jira projects and role assignments
 └── report/
-    ├── checks.py           # All audit checks
-    └── generator.py        # HTML report generation
+    ├── checks.py               # Plug-and-play audit checks (toggle on/off)
+    ├── checks_configured.py    # Configured audit checks (require org-specific values)
+    └── generator.py            # HTML report generation
 ```
