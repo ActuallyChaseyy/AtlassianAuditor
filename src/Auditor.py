@@ -6,6 +6,7 @@ import json
 from handlers import groups, tenants, users, jira_spaces, permission_schemes
 from report import generator
 from report.checks import run_checks
+from report.checks_configured import run_checks as run_configured_checks
 
 dotenv.load_dotenv()
 
@@ -80,7 +81,7 @@ def main():
         print(f"Audit data cached to {CACHE_FILE}")
 
     # Run checks and add to audit_data map
-    audit_data["suggestions"] = run_checks(audit_data)
+    audit_data["suggestions"] = run_checks(audit_data) + run_configured_checks(audit_data)
     print("Generating report...")
     generator.generate_report(audit_data)
 

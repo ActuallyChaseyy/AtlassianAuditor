@@ -1,5 +1,21 @@
 from collections import defaultdict
 
+# ── Enable / disable ───────────────────────────────────────────────────────────
+CHECK_EMPTY_GROUPS                          = True
+CHECK_ALL_INACTIVE_GROUPS                   = True
+CHECK_INACTIVE_USERS_IN_GROUPS              = True
+CHECK_DUPLICATE_EMAIL_ACCOUNTS              = True
+CHECK_OVER_PRIVILEGED_USERS                 = True
+CHECK_USERS_DIRECT_JIRA_ACCESS              = True
+CHECK_JIRA_PROJECTS_DIRECT_USER_ASSIGNMENTS = True
+CHECK_JIRA_EMPTY_GROUP_ASSIGNED             = True
+CHECK_GROUPS_NO_JIRA_ACCESS                 = True
+CHECK_GROUPS_NO_DESCRIPTION                 = True
+CHECK_UNGROUPED_USERS                       = True
+CHECK_JIRA_NO_LEAD                          = True
+CHECK_JIRA_NO_GROUP_ACCESS                  = True
+CHECK_SAME_GROUP_NAME_MULTI_TENANT          = True
+
 
 def run_checks(audit_data) -> list[dict]:
     groups      = audit_data.get("groups", [])
@@ -9,22 +25,21 @@ def run_checks(audit_data) -> list[dict]:
 
     raw = [
         # Warnings
-        _check_empty_groups(groups, tenant_map),
-        _check_all_inactive_groups(groups, tenant_map),
-        _check_inactive_users_in_groups(groups),
-        _check_duplicate_email_accounts(users),
-        _check_over_privileged_users(jira_spaces, users),
-        _check_users_direct_jira_access(jira_spaces, users),
-        _check_jira_projects_direct_user_assignments(jira_spaces),
-        _check_jira_empty_group_assigned(jira_spaces, groups),
+        _check_empty_groups(groups, tenant_map)                        if CHECK_EMPTY_GROUPS else None,
+        _check_all_inactive_groups(groups, tenant_map)                 if CHECK_ALL_INACTIVE_GROUPS else None,
+        _check_inactive_users_in_groups(groups)                        if CHECK_INACTIVE_USERS_IN_GROUPS else None,
+        _check_duplicate_email_accounts(users)                         if CHECK_DUPLICATE_EMAIL_ACCOUNTS else None,
+        _check_over_privileged_users(jira_spaces, users)               if CHECK_OVER_PRIVILEGED_USERS else None,
+        _check_users_direct_jira_access(jira_spaces, users)            if CHECK_USERS_DIRECT_JIRA_ACCESS else None,
+        _check_jira_projects_direct_user_assignments(jira_spaces)      if CHECK_JIRA_PROJECTS_DIRECT_USER_ASSIGNMENTS else None,
+        _check_jira_empty_group_assigned(jira_spaces, groups)          if CHECK_JIRA_EMPTY_GROUP_ASSIGNED else None,
         # Info
-        _check_groups_no_jira_access(groups, jira_spaces, tenant_map),
-        _check_groups_no_description(groups, tenant_map),
-        _check_ungrouped_users(groups, users),
-        _check_jira_no_lead(jira_spaces),
-        _check_jira_no_group_access(jira_spaces),
-        _check_large_groups_on_jira(groups, jira_spaces, tenant_map),
-        _check_same_group_name_multi_tenant(groups, tenant_map),
+        _check_groups_no_jira_access(groups, jira_spaces, tenant_map) if CHECK_GROUPS_NO_JIRA_ACCESS else None,
+        _check_groups_no_description(groups, tenant_map)               if CHECK_GROUPS_NO_DESCRIPTION else None,
+        _check_ungrouped_users(groups, users)                          if CHECK_UNGROUPED_USERS else None,
+        _check_jira_no_lead(jira_spaces)                               if CHECK_JIRA_NO_LEAD else None,
+        _check_jira_no_group_access(jira_spaces)                       if CHECK_JIRA_NO_GROUP_ACCESS else None,
+        _check_same_group_name_multi_tenant(groups, tenant_map)        if CHECK_SAME_GROUP_NAME_MULTI_TENANT else None,
     ]
     return [c for c in raw if c is not None]
 
@@ -115,21 +130,6 @@ def _check_groups_no_description(groups, tenant_map):
     )
 
 
-def _check_large_groups_on_jira(groups, jira_spaces, tenant_map, threshold=50):
-    assigned = {g["name"] for s in jira_spaces for g in s.get("groups_with_access", [])}
-    items = [
-        {"label": g["name"], "tenant": _tenant_name(g, tenant_map), "members": len(g.get("users", []))}
-        for g in groups
-        if len(g.get("users", [])) > threshold and g["name"] in assigned
-    ]
-    return _finding(
-        "large_groups_on_jira", "info", "Groups",
-        f"groups with >{threshold} members assigned to a Jira project",
-        "Large groups on Jira projects may indicate over-broad access. Consider splitting into more targeted groups.",
-        items,
-    )
-
-
 def _check_same_group_name_multi_tenant(groups, tenant_map):
     name_to_tenants = defaultdict(set)
     for g in groups:
@@ -149,7 +149,6 @@ def _check_same_group_name_multi_tenant(groups, tenant_map):
 # ── User checks ────────────────────────────────────────────────────────────────
 
 def _check_inactive_users_in_groups(groups):
-    # {accountId: {name, email, groups: set}}
     user_map = {}
     for g in groups:
         for u in g.get("users", []):
@@ -204,7 +203,6 @@ def _check_duplicate_email_accounts(users):
 
 def _check_over_privileged_users(jira_spaces, users):
     managed_ids = {u["accountId"] for u in users}
-    # {accountId: {displayName, projects: list}}
     admin_projects = defaultdict(lambda: {"name": "", "projects": []})
     for s in jira_spaces:
         for u in _human_users(s.get("users_with_access", [])):
@@ -227,7 +225,6 @@ def _check_over_privileged_users(jira_spaces, users):
 
 def _check_users_direct_jira_access(jira_spaces, users):
     managed_ids = {u["accountId"] for u in users}
-    # {accountId: {displayName, projects: list}}
     direct_access = defaultdict(lambda: {"name": "", "projects": []})
     for s in jira_spaces:
         for u in _human_users(s.get("users_with_access", [])):
