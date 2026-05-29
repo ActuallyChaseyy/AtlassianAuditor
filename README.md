@@ -52,7 +52,7 @@ The report has five tabs:
 1. Clone the repository and install dependencies:
 
 ```bash
-pip install python-dotenv requests
+pip install -r requirements.txt
 ```
 
 2. Copy the example environment file and fill in your credentials:
@@ -77,7 +77,31 @@ ATLASSIAN_API_TOKEN=  # Atlassian API token for the above account
 
 ```bash
 cd src
+python Auditor.py [--tenants TENANT ...] [--debug]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--tenants` | One or more tenant subdomains to scan. Omit to scan all tenants. |
+| `--debug` | Load data from the cached `audit_data.json` instead of hitting the API. |
+
+**Examples:**
+
+```bash
+# Scan all tenants
 python Auditor.py
+
+# Scan a single tenant (e.g. foo.atlassian.net)
+python Auditor.py --tenants foo
+
+# Scan multiple tenants
+python Auditor.py --tenants foo bar baz
+
+# Regenerate the report from cached data (no API calls)
+python Auditor.py --debug
+
+# Combine: cached data filtered to one tenant
+python Auditor.py --tenants foo --debug
 ```
 
 The script will:
@@ -92,11 +116,10 @@ Open `report.html` in any browser to view the report.
 
 ### Debug mode
 
-After the first run, you can set `DEBUG_MODE = True` in `Auditor.py` to load data from the cached `audit_data.json` file instead of hitting the API. This speeds up development and testing significantly.
+After the first run, pass `--debug` at the command line (or set `DEBUG_MODE = True` in `Auditor.py`) to load data from the cached `audit_data.json` file instead of hitting the API. This speeds up development and testing significantly.
 
-```python
-# src/Auditor.py
-DEBUG_MODE = True   # loads from audit_data.json
+```bash
+python Auditor.py --debug
 ```
 
 ### Adding new checks

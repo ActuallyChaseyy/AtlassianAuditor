@@ -43,19 +43,31 @@ def _get_project_roles(tenant, project_key):
 
     return list(users_map.values()), list(groups_map.values())
 
+def _get_project_permission_scheme_id(tenant, project_key):
+    """Returns the permission scheme ID for a project, or None on failure."""
+    resp = request_with_retry(
+        f"Permission Scheme ({project_key})", "get",
+        f"https://{tenant}.atlassian.net/rest/api/3/project/{project_key}/permissionscheme",
+        headers=headers
+    )
+    return resp.json().get("id") if resp.status_code == 200 else None
+
 def get_jira_spaces(tenant):
     print(f"Fetching Jira spaces for tenant {tenant}...")
-    url = f"https://{tenant}.atlassian.net/rest/api/2/project/search"
+    url = f"https://{tenant}.atlassian.net/rest/api/3/project/search"
     spaces = []
     for space in paginate_jira_api(f"Jira Spaces ({tenant})", url, headers):
         print(f"Found space: {space['key']} - {space['name']}")
         users_with_access, groups_with_access = _get_project_roles(tenant, space["key"])
+        permission_scheme_id = _get_project_permission_scheme_id(tenant, space["key"])
         spaces.append({
             "id": space["id"],
             "key": space["key"],
             "name": space["name"],
             "type": space["projectTypeKey"],
+            "tenant": tenant,
             "lead": space["lead"]["displayName"] if space.get("lead") else None,
+            "permission_scheme_id": permission_scheme_id,
             "users_with_access": users_with_access,
             "groups_with_access": groups_with_access,
         })

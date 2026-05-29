@@ -479,7 +479,26 @@ REPORT_TEMPLATE = """\
                 const usersTable = memberRows
                     ? `<table class="members-table"><thead><tr><th>Name</th><th>Email</th><th>Status</th></tr></thead><tbody>${{memberRows}}</tbody></table>`
                     : '<p class="empty-state">No members.</p>';
-                const permRows = (group.roles || []).map(r => `<tr><td>${{esc(r)}}</td></tr>`).join('');
+                const scheme = (DATA.permission_schemes || []).find(s => s.id == space.permission_scheme_id);
+                const groupRoles = group.roles || [];
+                let permsHtml;
+                if (scheme) {{
+                    const rows = [];
+                    for (const perm of scheme.permissions) {{
+                        for (const holder of perm.holders) {{
+                            if (holder.type === 'group' && holder.name === group.name) {{
+                                rows.push(`<tr><td>${{esc(formatPermissionName(perm.permission))}}</td><td>Direct</td></tr>`);
+                            }} else if (holder.type === 'projectRole' && groupRoles.includes(holder.name)) {{
+                                rows.push(`<tr><td>${{esc(formatPermissionName(perm.permission))}}</td><td>Role: ${{esc(holder.name)}}</td></tr>`);
+                            }}
+                        }}
+                    }}
+                    permsHtml = rows.length
+                        ? `<table class="members-table"><thead><tr><th>Permission</th><th>Granted Via</th></tr></thead><tbody>${{rows.join('')}}</tbody></table>`
+                        : '<p class="empty-state">No permissions found for this group in the space permission scheme.</p>';
+                }} else {{
+                    permsHtml = '<p class="empty-state">No permission scheme linked to this space.</p>';
+                }}
                 const memberCount = gd ? (gd.users || []).length : 0;
                 return `<details class="member-card">
                     <summary>
@@ -491,10 +510,7 @@ REPORT_TEMPLATE = """\
                         <button class="group-sub-tab" data-target="permissions">Permissions</button>
                     </div>
                     <div class="group-sub-panel active" data-panel="users">${{usersTable}}</div>
-                    <div class="group-sub-panel" data-panel="permissions">
-                        <table class="members-table"><thead><tr><th>Permission Role</th></tr></thead>
-                        <tbody>${{permRows}}</tbody></table>
-                    </div>
+                    <div class="group-sub-panel" data-panel="permissions">${{permsHtml}}</div>
                 </details>`;
             }}).join('') || '<p class="empty-state">No groups with access.</p>';
 
