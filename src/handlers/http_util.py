@@ -1,5 +1,7 @@
 import requests
 import time 
+from typing import Any, Generator
+from collections.abc import Iterator
 
 # Maximum number of retries for failed requests
 max_retries = 10
@@ -7,7 +9,19 @@ max_retries = 10
 default_timeout = 30 
 retryable_statuses = {500, 502, 503, 504}  # Server errors that should be retried
 
-def request_with_retry(context, method, url, **kwargs): 
+def request_with_retry(context: str, method: str, url: str, **kwargs: Any) -> requests.Response:
+    """Make an HTTP request with retry logic for handling rate limits and transient errors.
+    
+    Args:
+        context: A string describing the context of the request for logging purposes (e.g., "Fetching groups").
+        method: HTTP method (e.g., "get", "post").
+        url: The URL to which the request is sent.
+        **kwargs: Additional arguments to pass to requests
+    
+    Returns:
+        The HTTP response object.
+    """
+
     kwargs.setdefault("timeout", default_timeout)
     for attempt in range(max_retries):
         try: 
@@ -31,7 +45,18 @@ def request_with_retry(context, method, url, **kwargs):
 
 # cursor-based pagination for the Atlassian admin API
 # https://developer.atlassian.com/cloud/admin/organization/rest/intro/#Pagination
-def paginate_admin_api(context, url, headers):
+def paginate_admin_api(context: str, url: str, headers: dict) -> Iterator[Any]:
+    """Paginate through the Atlassian admin API using cursor-based pagination.
+
+    Args:
+        context: A string describing the context of the request for logging purposes.
+        url: The URL to which the request is sent.
+        headers: HTTP headers to include in the request.
+
+    Yields:
+        Items from the API response.
+    """
+
     cursor = None
     base_url = url.split("?")[0]
     initial_params = dict(param.split("=", 1) for param in url.split("?")[1].split("&")) if "?" in url else {}
@@ -46,7 +71,18 @@ def paginate_admin_api(context, url, headers):
             break
 
 # page-based pagination for the Jira REST API
-def paginate_jira_api(context, url, headers):
+def paginate_jira_api(context: str, url: str, headers: dict) -> Iterator[Any]:
+    """Paginate through the Jira REST API using page-based pagination.
+    
+    Args:
+        context: A string describing the context of the request for logging purposes.
+        url: The URL to which the request is sent.
+        headers: HTTP headers to include in the request.
+        
+    Yields:
+        Items from the API response.
+    """
+
     start = 0
     max_results = 50
     while True:

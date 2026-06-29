@@ -127,6 +127,15 @@ REPORT_TEMPLATE = """\
                                display: flex; justify-content: space-between; align-items: center; }}
         .member-card summary::-webkit-details-marker {{ display: none; }}
 
+        .toolbar {{ display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }}
+        .toolbar input[type=search] {{ margin-bottom: 0; }}
+        .toggle-btn {{
+            background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+            color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 7px 14px;
+            white-space: nowrap; transition: color 0.15s, border-color 0.15s;
+        }}
+        .toggle-btn.active {{ color: var(--accent); border-color: var(--accent); }}
+
         ::-webkit-scrollbar {{ width: 8px; }}
         ::-webkit-scrollbar-track {{ background: var(--bg); }}
         ::-webkit-scrollbar-thumb {{ background: var(--border); border-radius: 4px; }}
@@ -142,14 +151,12 @@ REPORT_TEMPLATE = """\
         <button data-tab="summary" class="active">Summary</button>
         <button data-tab="groups">Groups</button>
         <button data-tab="users">Users</button>
-        <button data-tab="permissions">Permissions</button>
         <button data-tab="jira-spaces">Jira Spaces</button>
     </nav>
     <main>
         <section id="summary" class="tab active"></section>
         <section id="groups" class="tab"></section>
         <section id="users" class="tab"></section>
-        <section id="permissions" class="tab"></section>
         <section id="jira-spaces" class="tab"></section>
     </main>
 
@@ -263,27 +270,53 @@ REPORT_TEMPLATE = """\
             const assignedSpaces = (DATA.jira_spaces || []).filter(s =>
                 (s.groups_with_access || []).some(g => g.name === group.name)
             );
-            const spaceRows = assignedSpaces.map(s => {{
-                const ga = s.groups_with_access.find(g => g.name === group.name);
-                const roles = (ga.roles || []).join(', ') || '—';
-                return `<tr><td>${{esc(s.name)}}</td><td>${{esc(s.key)}}</td><td>${{esc(roles)}}</td></tr>`;
-            }}).join('');
-            const spacesTable = spaceRows
-                ? `<table class="members-table"><thead><tr>
-                       <th>Project <span class="member-count">(${{assignedSpaces.length}})</span></th>
-                       <th>Key</th><th>Roles</th>
-                   </tr></thead><tbody>${{spaceRows}}</tbody></table>`
-                : '<p class="empty-state">Not assigned to any Jira project.</p>';
+
+            const spacesHtml = assignedSpaces.map(space => {{
+                const ga = space.groups_with_access.find(g => g.name === group.name);
+                const groupRoles = ga ? (ga.roles || []) : [];
+                const scheme = (DATA.permission_schemes || []).find(s => s.id == space.permission_scheme_id);
+                let permsHtml;
+                if (scheme) {{
+                    const allPerms = [...new Set(scheme.permissions.map(p => p.permission))].sort();
+                    const permRows = allPerms.map(permKey => {{
+                        let granted = false;
+                        for (const perm of scheme.permissions) {{
+                            if (perm.permission !== permKey) continue;
+                            for (const holder of perm.holders) {{
+                                if (holder.type === 'group' && holder.name === group.name) {{ granted = true; break; }}
+                                if (holder.type === 'projectRole' && groupRoles.includes(holder.name)) {{ granted = true; break; }}
+                            }}
+                            if (granted) break;
+                        }}
+                        return `<tr>
+                            <td>${{esc(formatPermissionName(permKey))}}</td>
+                            <td style="text-align:right">${{granted ? '✅' : '❌'}}</td>
+                        </tr>`;
+                    }}).join('');
+                    permsHtml = `<table class="members-table"><thead><tr>
+                        <th>Permission</th><th style="text-align:right">Granted</th>
+                    </tr></thead><tbody>${{permRows}}</tbody></table>`;
+                }} else {{
+                    permsHtml = '<p class="empty-state">No permission scheme linked to this space.</p>';
+                }}
+                return `<details class="member-card">
+                    <summary>
+                        <div class="summary-left">${{esc(space.name)}}
+                            <span style="color:#6B778C;font-weight:normal"> · ${{esc(space.key)}}</span>
+                        </div>
+                        <div class="summary-right">${{esc(groupRoles.join(', ') || '')}}</div>
+                    </summary>
+                    ${{permsHtml}}
+                </details>`;
+            }}).join('') || '<p class="empty-state">Not assigned to any Jira project.</p>';
 
             det.insertAdjacentHTML('beforeend', `
                 <div class="group-tabs">
                     <button class="group-tab active" data-target="users">Users (${{users.length}})</button>
                     <button class="group-tab" data-target="spaces">Spaces (${{assignedSpaces.length}})</button>
-                    <button class="group-tab" data-target="permissions">Permissions</button>
                 </div>
                 <div class="group-tab-panel active" data-panel="users">${{usersTable}}</div>
-                <div class="group-tab-panel" data-panel="spaces">${{spacesTable}}</div>
-                <div class="group-tab-panel" data-panel="permissions"><p class="empty-state">Permissions data not yet collected.</p></div>`);
+                <div class="group-tab-panel" data-panel="spaces">${{spacesHtml}}</div>`);
             det.querySelectorAll('.group-tab').forEach(tab =>
                 tab.addEventListener('click', e => {{
                     e.preventDefault();
@@ -314,7 +347,7 @@ REPORT_TEMPLATE = """\
     }}
 
     // ── Users ──────────────────────────────────────────────────────────────────
-    let userRows = [];
+    let userCards = [];
 
     function renderUsers() {{
         const sec = document.getElementById('users');
@@ -323,118 +356,78 @@ REPORT_TEMPLATE = """\
             return;
         }}
         sec.innerHTML = `
-            <input type="search" id="user-search" placeholder="Search users...">
-            <table class="members-table">
-                <thead><tr><th>Name</th><th>Email</th><th>Account Status</th></tr></thead>
-                <tbody id="users-tbody"></tbody>
-            </table>`;
-        const tbody = document.getElementById('users-tbody');
-        userRows = DATA.users.map(u => {{
-            const tr = document.createElement('tr');
-            tr.dataset.name  = (u.name  || '').toLowerCase();
-            tr.dataset.email = (u.email || '').toLowerCase();
-            tr.innerHTML = `<td>${{esc(u.name)}}</td><td>${{esc(u.email)}}</td><td>${{esc(u.status)}}</td>`;
-            return tr;
-        }});
-        userRows.forEach(r => tbody.appendChild(r));
-        document.querySelector('[data-tab="users"]').textContent = `Users (${{DATA.users.length}})`;
-        document.getElementById('user-search').addEventListener('input', e => {{
-            const q = e.target.value.toLowerCase();
-            userRows.forEach(r => {{
-                r.style.display = (r.dataset.name.includes(q) || r.dataset.email.includes(q)) ? '' : 'none';
-            }});
-        }});
-    }}
+            <div class="toolbar">
+                <input type="search" id="user-search" placeholder="Search users...">
+                <button id="user-active-toggle" class="toggle-btn">Active Only</button>
+            </div>
+            <div id="user-list"></div>`;
+        const list = document.getElementById('user-list');
 
-    // ── Permissions ────────────────────────────────────────────────────────────
-    function formatHolder(h) {{
-        if (h.type === 'group')           return 'Group: ' + esc(h.name || '');
-        if (h.type === 'projectRole')     return 'Role: '  + esc(h.name || '');
-        if (h.type === 'applicationRole') return 'App: '   + esc(h.name || '');
-        if (h.type === 'anyone')          return 'Anyone (public)';
-        if (h.type === 'user') {{
-            const u = (DATA.users || []).find(u => u.accountId === h.accountId);
-            return 'User: ' + esc(u ? u.name : h.accountId || '');
+        const groupsByAccount = {{}};
+        for (const group of (DATA.groups || [])) {{
+            for (const u of (group.users || [])) {{
+                if (!groupsByAccount[u.accountId]) groupsByAccount[u.accountId] = [];
+                groupsByAccount[u.accountId].push(group);
+            }}
         }}
-        return esc(h.type + (h.name ? ': ' + h.name : ''));
+
+        userCards = (DATA.users || []).map(user => {{
+            const det = document.createElement('details');
+            det.className = 'user-card';
+            det.dataset.name   = (user.name   || '').toLowerCase();
+            det.dataset.email  = (user.email  || '').toLowerCase();
+            det.dataset.status = (user.status || '').toLowerCase();
+            det.innerHTML = `
+                <summary>
+                    <div class="summary-left">${{esc(user.name)}}
+                        <span style="color:#6B778C;font-weight:normal"> - ${{esc(user.email)}}</span>
+                    </div>
+                    <div class="summary-right">${{esc(user.status)}}</div>
+                </summary>`;
+
+            let innerDone = false;
+            det.addEventListener('toggle', () => {{
+                if (!det.open || innerDone) return;
+                innerDone = true;
+                const memberGroups = groupsByAccount[user.accountId] || [];
+                const rows = memberGroups.map(g =>
+                    `<tr><td>${{esc(g.name)}}</td><td>${{esc(g.description || '')}}</td></tr>`
+                ).join('');
+                const groupsTable = rows
+                    ? `<table class="members-table"><thead><tr>
+                           <th>Group <span class="member-count">(${{memberGroups.length}})</span></th>
+                           <th>Description</th>
+                       </tr></thead><tbody>${{rows}}</tbody></table>`
+                    : '<p class="empty-state">Not a member of any group.</p>';
+                det.insertAdjacentHTML('beforeend', groupsTable);
+            }});
+            return det;
+        }});
+
+        userCards.forEach(c => list.appendChild(c));
+        document.querySelector('[data-tab="users"]').textContent = `Users (${{DATA.users.length}})`;
+
+        let activeOnly = false;
+        function applyUserFilter() {{
+            const q = document.getElementById('user-search').value.toLowerCase();
+            userCards.forEach(c => {{
+                const matchSearch = c.dataset.name.includes(q) || c.dataset.email.includes(q);
+                const matchActive = !activeOnly || c.dataset.status === 'active';
+                c.style.display = (matchSearch && matchActive) ? '' : 'none';
+            }});
+        }}
+
+        document.getElementById('user-search').addEventListener('input', applyUserFilter);
+        document.getElementById('user-active-toggle').addEventListener('click', e => {{
+            activeOnly = !activeOnly;
+            e.target.classList.toggle('active', activeOnly);
+            applyUserFilter();
+        }});
     }}
 
+    // ── Permissions (helpers used by Jira Spaces) ──────────────────────────────
     function formatPermissionName(key) {{
         return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    }}
-
-    function buildSchemeCard(scheme) {{
-        const det = document.createElement('details');
-        det.className = 'scheme-card';
-        det.dataset.name = (scheme.name || '').toLowerCase();
-        det.innerHTML = `
-            <summary>
-                <div class="summary-left">${{esc(scheme.name)}}
-                    <span style="color:#6B778C;font-weight:normal"> - ${{esc(scheme.description || 'No description')}}</span>
-                </div>
-                <div class="summary-right">${{esc(scheme.tenant)}} · ${{scheme.project_count}} project${{scheme.project_count !== 1 ? 's' : ''}}</div>
-            </summary>`;
-
-        let innerDone = false;
-        det.addEventListener('toggle', () => {{
-            if (!det.open || innerDone) return;
-            innerDone = true;
-
-            const projectRows = (scheme.projects || []).map(p =>
-                `<tr><td>${{esc(p.key)}}</td><td>${{esc(p.name)}}</td></tr>`
-            ).join('');
-            const projectsHtml = projectRows
-                ? `<table class="members-table"><thead><tr><th>Key</th><th>Project</th></tr></thead><tbody>${{projectRows}}</tbody></table>`
-                : '<p class="empty-state">No projects use this scheme.</p>';
-
-            const permRows = (scheme.permissions || []).map(entry => {{
-                const grantedTo = (entry.holders || []).map(formatHolder).join('<br>');
-                return `<tr><td style="white-space:nowrap">${{esc(formatPermissionName(entry.permission))}}</td><td>${{grantedTo}}</td></tr>`;
-            }}).join('');
-            const permsHtml = permRows
-                ? `<table class="members-table"><thead><tr><th>Permission</th><th>Granted To</th></tr></thead><tbody>${{permRows}}</tbody></table>`
-                : '<p class="empty-state">No permission entries.</p>';
-
-            det.insertAdjacentHTML('beforeend', `
-                <div class="space-tabs">
-                    <button class="space-tab active" data-target="perms">Permissions (${{(scheme.permissions || []).length}})</button>
-                    <button class="space-tab" data-target="projects">Projects (${{scheme.project_count}})</button>
-                </div>
-                <div class="space-tab-panel active" data-panel="perms">${{permsHtml}}</div>
-                <div class="space-tab-panel" data-panel="projects">${{projectsHtml}}</div>`);
-
-            det.querySelectorAll('.space-tab').forEach(tab =>
-                tab.addEventListener('click', e => {{
-                    e.preventDefault();
-                    const target = e.target.dataset.target;
-                    det.querySelectorAll('.space-tab').forEach(t => t.classList.remove('active'));
-                    det.querySelectorAll('.space-tab-panel').forEach(p => p.classList.remove('active'));
-                    e.target.classList.add('active');
-                    det.querySelector(`.space-tab-panel[data-panel="${{target}}"]`).classList.add('active');
-                }})
-            );
-        }});
-        return det;
-    }}
-
-    let schemeCards = [];
-
-    function renderPermissions() {{
-        const sec = document.getElementById('permissions');
-        const schemes = DATA.permission_schemes || [];
-        if (!schemes.length) {{
-            sec.innerHTML = '<p class="empty-state">No permission schemes found.</p>';
-            return;
-        }}
-        sec.innerHTML = `<input type="search" id="scheme-search" placeholder="Search permission schemes..."><div id="scheme-list"></div>`;
-        const list = document.getElementById('scheme-list');
-        schemeCards = schemes.map(buildSchemeCard);
-        schemeCards.forEach(c => list.appendChild(c));
-        document.querySelector('[data-tab="permissions"]').textContent = `Permissions (${{schemes.length}})`;
-        document.getElementById('scheme-search').addEventListener('input', e => {{
-            const q = e.target.value.toLowerCase();
-            schemeCards.forEach(c => {{ c.style.display = c.dataset.name.includes(q) ? '' : 'none'; }});
-        }});
     }}
 
     // ── Jira Spaces ────────────────────────────────────────────────────────────
@@ -571,7 +564,6 @@ REPORT_TEMPLATE = """\
         summary:     renderSummary,
         groups:      renderGroups,
         users:       renderUsers,
-        permissions: renderPermissions,
         'jira-spaces': renderJiraSpaces,
     }};
 

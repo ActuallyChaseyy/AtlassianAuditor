@@ -1,12 +1,24 @@
 import dotenv
 import os
 import time
+from typing import Any
 from handlers.http_util import request_with_retry, paginate_admin_api
 
 dotenv.load_dotenv()
 base_url = "https://api.atlassian.com/admin/v2"
 
-def get_group_members(org_id, group_id, headers):
+def get_group_members(org_id: str, group_id: str, headers: dict) -> list[dict[str, Any]]:
+    """Fetch members of a group using the Atlassian Admin API with pagination.
+
+    Args:
+        org_id: The ID of the organization.
+        group_id: The ID of the group.
+        headers: HTTP headers to include in the request.
+
+    Returns:
+        A list of group members.
+    """
+
     time.sleep(0.5) # small delay to help avoid rate limits
     # print(f"Fetching members for group {group_id}...")
     url = f"{base_url}/orgs/{org_id}/directories/-/users?groupIds={group_id}"
@@ -20,7 +32,15 @@ def get_group_members(org_id, group_id, headers):
         for member in paginate_admin_api("Group Members", url, headers=headers)
     ]
 
-def get_groups(org_id):
+def get_groups(org_id: str) -> list[dict[str, Any]]:
+    """Fetch groups for an organization using the Atlassian Admin API with pagination.
+
+    Args:
+        org_id: The ID of the organization.
+
+    Returns:
+        A list of groups.
+    """
     print("Fetching groups for org...")
     url = f"{base_url}/orgs/{org_id}/directories/-/groups"
     headers = {"Authorization": f"Bearer {os.environ['ADMIN_API_KEY']}"} 
